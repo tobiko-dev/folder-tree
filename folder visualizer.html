@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folder Tree</title>
+<style>
+:root {
+  --bg:#fff;--bg2:#f6f8fa;--bg3:#eaeef2;
+  --text:#1c2128;--text2:#57606a;--text3:#8c959f;
+  --border:#d0d7de;--accent:#0969da;--folder:#0550ae;--file:#57606a;
+  --hover:rgba(175,184,193,.12);--hit:#fff8c5;--hit-t:#7d4e00;
+  --r:6px;--font:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;
+  --text:#e6edf3;--text2:#8b949e;--text3:#6e7681;
+  --border:#30363d;--accent:#58a6ff;--folder:#79c0ff;--file:#8b949e;
+  --hover:rgba(177,186,196,.08);--hit:rgba(187,128,9,.18);--hit-t:#e3b341;
+}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+
+/* ── Drop overlay ─────────────────────────────────── */
+#drop-overlay{
+  position:fixed;inset:0;z-index:100;
+  background:rgba(9,105,218,.08);
+  border:3px dashed var(--accent);
+  border-radius:16px;margin:10px;
+  display:none;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:14px;pointer-events:none;
+}
+#drop-overlay.on{display:flex}
+#drop-overlay svg{color:var(--accent)}
+#drop-overlay span{font-size:18px;font-weight:500;color:var(--accent)}
+
+/* ── Landing ──────────────────────────────────────── */
+#land{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;gap:12px}
+.logo{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.logo svg{color:var(--accent)}
+.logo h1{font-size:22px;font-weight:600;letter-spacing:-.4px}
+.logo-sub{font-size:14px;color:var(--text3);margin-bottom:8px}
+
+.err-bar{width:100%;max-width:520px;padding:10px 14px;background:#ffebe9;color:#cf222e;border-radius:var(--r);font-size:13px;line-height:1.5;display:none}
+@media(prefers-color-scheme:dark){.err-bar{background:rgba(255,123,114,.12);color:#ff7b72}}
+
+/* Path card */
+.path-card{width:100%;max-width:520px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+.card-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)}
+#path{
+  padding:11px 14px;border:1.5px solid var(--border);border-radius:var(--r);
+  background:var(--bg);color:var(--text);font-size:14px;font-family:var(--font);
+  outline:none;width:100%;transition:border-color .15s;
+}
+#path:focus{border-color:var(--accent)}
+#path::placeholder{color:var(--text3);font-size:13px}
+.path-warn{font-size:12.5px;color:#9a6700;background:#fff8c5;border-radius:var(--r);padding:9px 12px;line-height:1.5}
+@media(prefers-color-scheme:dark){.path-warn{color:#e3b341;background:rgba(187,128,9,.15)}}
+.path-hint{display:flex;gap:12px;align-items:flex-start;background:var(--bg3);border-radius:var(--r);padding:12px 14px}
+.hint-steps{margin:0;padding-left:18px;font-size:12.5px;color:var(--text2);line-height:1.9;list-style:decimal}
+.hint-steps li strong{color:var(--text)}
+.drag-hint{text-align:center;font-size:12px;color:var(--text3);padding-top:2px}
+
+/* Command card */
+.cmd-card{width:100%;max-width:520px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px 20px;flex-direction:column;gap:10px;display:none}
+.cmd-card.on{display:flex}
+.cmd-lbl{font-size:12.5px;color:var(--text2)}
+.cmd-row{display:flex;gap:8px;align-items:flex-start}
+.cmd-box{flex:1;font-family:monospace;font-size:13px;color:var(--text);background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:9px 12px;word-break:break-all;line-height:1.5;user-select:all}
+.copy-btn{padding:9px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--r);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font);flex-shrink:0;white-space:nowrap;transition:background .2s}
+.copy-btn.ok{background:#2da44e}
+.paste-btn{padding:13px;background:var(--accent);color:#fff;border:none;border-radius:var(--r);font-size:15px;font-weight:500;cursor:pointer;font-family:var(--font);width:100%;transition:opacity .1s}
+.paste-btn:hover{opacity:.9}
+.fallback-link{font-size:12px;color:var(--text3);cursor:pointer;text-align:center;text-decoration:underline;text-underline-offset:2px}
+
+.manual-box{width:100%;max-width:520px;flex-direction:column;gap:8px;display:none}
+.manual-box.on{display:flex}
+#paste{padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text);font-family:monospace;font-size:12px;resize:vertical;outline:none;line-height:1.5;width:100%}
+#paste:focus{border-color:var(--accent)}
+.view-btn{padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;font-family:var(--font)}
+.note{font-size:12px;color:var(--text3);text-align:center}
+
+#paste-capture{position:fixed;top:-9999px;left:-9999px;opacity:0;width:1px;height:1px}
+.paste-btn.waiting{background:#2da44e;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}}
+
+/* ── Loading ──────────────────────────────────────── */
+#loading{flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+.spin{width:26px;height:26px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ── App ──────────────────────────────────────────── */
+#app{display:none;flex-direction:column;height:100vh}
+.toolbar{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--border);background:var(--bg2);flex-wrap:wrap}
+.t-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);color:var(--text2);font-size:12px;cursor:pointer;font-family:var(--font)}
+.t-btn:hover{color:var(--text)}
+.t-title{display:flex;align-items:center;gap:6px;font-weight:600;font-size:13.5px}
+.t-title svg{color:var(--folder)}
+.t-meta{font-size:12px;color:var(--text3)}
+.t-right{display:flex;gap:6px;margin-left:auto;align-items:center;flex-wrap:wrap}
+.sw{position:relative;display:inline-flex;align-items:center}
+.sw svg{position:absolute;left:8px;pointer-events:none;color:var(--text3)}
+#search{padding:5px 9px 5px 28px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:12px;font-family:var(--font);outline:none;width:180px}
+#search:focus{border-color:var(--accent)}
+#tree-wrap{flex:1;overflow-y:auto;padding:6px 0}
+
+/* ── Nodes ────────────────────────────────────────── */
+.nr{display:flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;cursor:default;margin:0 4px}
+.nr.cl{cursor:pointer}
+.nr:hover{background:var(--hover)}
+.nr.hit{background:var(--hit)}
+.nr.hit .nn{color:var(--hit-t);font-weight:500}
+.nc{width:14px;height:14px;display:flex;align-items:center;justify-content:center;color:var(--text3);flex-shrink:0;transition:transform .15s}
+.nc.open{transform:rotate(90deg)}
+.ni{display:flex;align-items:center;width:15px;flex-shrink:0;color:var(--folder)}
+.ni.fi{color:var(--file)}
+.nn{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;line-height:1.5}
+.nn.fn{color:var(--text2)}
+.nb{font-size:11px;color:var(--text3);margin-left:auto;flex-shrink:0}
+.nk{border-left:1px solid var(--border)}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1c2128;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;z-index:200;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,.25)}
+@media(prefers-color-scheme:dark){#toast{background:#e6edf3;color:#1c2128}}
+body.ctrl-held .nr.has-path{cursor:pointer}
+body.ctrl-held .nr.has-path:hover .nn{text-decoration:underline;text-underline-offset:3px}
+</style>
+</head>
+<body>
+
+<!-- Hidden paste capture (focused when clipboard API is blocked) -->
+<textarea id="paste-capture" tabindex="-1" aria-hidden="true"></textarea>
+
+<!-- Drop overlay -->
+<div id="drop-overlay">
+  <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+  <span>Drop folder here</span>
+</div>
+
+<!-- Landing -->
+<div id="land">
+  <div class="logo">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+    <h1>Folder Tree</h1>
+  </div>
+  <p class="logo-sub">Visualize any folder as an interactive tree</p>
+
+  <div id="err" class="err-bar"></div>
+
+  <!-- Step 1: path -->
+  <div class="path-card">
+    <div class="card-label">Step 1 — paste your folder path</div>
+    <input id="path" type="text" placeholder="C:\Users\YourName\OneDrive - Company Name" autocomplete="off" spellcheck="false">
+    <div id="path-warn" class="path-warn" style="display:none">
+      ⚠ This looks like a folder name, not a full path. The path must start with a drive letter, e.g. <strong>C:\Users\YourName\Woo Bin - Personal</strong>
+    </div>
+    <div class="path-hint">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--accent)"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      <ol class="hint-steps">
+        <li>Open your folder in <strong>File Explorer</strong></li>
+        <li>Click the <strong>address bar</strong> at the top of the window — it will show the full path starting with <strong>C:\</strong></li>
+        <li>Press <strong>Ctrl+A</strong> to select it, then <strong>Ctrl+C</strong> to copy</li>
+        <li>Paste it into the field above</li>
+      </ol>
+    </div>
+    <div class="drag-hint">Or drag a folder from File Explorer directly onto this window</div>
+  </div>
+
+  <!-- Step 2: command (shown once path entered) -->
+  <div class="cmd-card" id="cmd-card">
+    <div class="card-label">Step 2 — run this command</div>
+    <div class="cmd-lbl">Paste into Command Prompt and press Enter. Output copies to your clipboard automatically.</div>
+    <div class="cmd-row">
+      <div class="cmd-box" id="cmd-text"></div>
+      <button class="copy-btn" id="copy-btn">Copy</button>
+    </div>
+    <button class="paste-btn" id="paste-btn">📋 &nbsp;Step 3 — Paste &amp; view tree</button>
+    <div class="fallback-link" id="fallback-link">paste output manually instead</div>
+  </div>
+
+  <!-- Manual fallback -->
+  <div class="manual-box" id="manual-box">
+    <textarea id="paste" rows="8" placeholder="Paste tree output here…"></textarea>
+    <button class="view-btn" id="view-btn">View tree →</button>
+  </div>
+
+  <p class="note">Nothing is uploaded — all processing happens in your browser</p>
+</div>
+
+<!-- Loading -->
+<div id="loading">
+  <div class="spin"></div>
+  <div style="font-size:14px;color:var(--text2)" id="load-msg">Reading folder…</div>
+</div>
+
+<!-- App -->
+<div id="app">
+  <div class="toolbar">
+    <button class="t-btn" id="back">← Back</button>
+    <div class="t-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      <span id="root-name"></span>
+    </div>
+    <span class="t-meta" id="meta"></span>
+    <span class="t-meta" id="ctrl-hint" style="display:none;color:var(--accent);cursor:default" title="">Ctrl+click to open</span>
+    <div class="t-right">
+      <button class="t-btn" id="exp-all">Expand all</button>
+      <button class="t-btn" id="col-all">Collapse all</button>
+      <div class="sw">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="search" type="text" placeholder="Search…" aria-label="Search">
+      </div>
+      <button class="t-btn" id="clr-s" style="display:none;padding:4px 8px">✕</button>
+    </div>
+  </div>
+  <div id="tree-wrap"></div>
+</div>
+
+<script>
+const CARET=`<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+const FOLD=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
+const FOPEN=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2 3h9a2 2 0 0 1 2 2v1"/><path d="M21.47 16.5l-7.47 5-7-5 7-4z"/></svg>`;
+const FILE=`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>`;
+
+let root=null,open=new Set(),term='';
+
+// ── Filesystem API (drag-and-drop) ─────────────────
+async function readDir(h,d=0){
+  const n={name:h.name,type:'dir',children:[]};
+  if(d>25)return n;
+  try{
+    const e=[];
+    for await(const[,x] of h.entries())e.push(x);
+    e.sort((a,b)=>a.kind!==b.kind?a.kind==='directory'?-1:1:a.name.localeCompare(b.name,undefined,{sensitivity:'base'}));
+    for(const x of e){
+      if(x.kind==='directory')n.children.push(await readDir(x,d+1));
+      else n.children.push({name:x.name,type:'file',children:[]});
+    }
+  }catch(e){}
+  return n;
+}
+
+// ── Parser ─────────────────────────────────────────
+function parse(raw){
+  if(!raw?.trim())return null;
+  const lines=raw.split(/\r?\n/).filter(l=>{
+    const t=l.trim();
+    return t&&!t.startsWith('Folder PATH')&&!t.startsWith('Volume serial');
+  });
+  if(!lines.length)return null;
+  return lines.some(l=>/[├└│+\\─]/.test(l))?parseWin(lines):parseInd(lines);
+}
+let _id=0;
+const mkn=(n,t='dir')=>({id:++_id,name:n,type:t,children:[]});
+function parseWin(lines){
+  const rawRoot=lines[0].trim();
+  const root=mkn(rawRoot.split('\\').pop()||rawRoot,'dir');
+  // Store full path if it looks like an absolute Windows path
+  root.path=/^[A-Za-z]:\\/.test(rawRoot)?rawRoot:null;
+  const flat=[];
+  for(let i=1;i<lines.length;i++){
+    const line=lines[i];if(!line.trim())continue;
+    const m=line.match(/[├└+\\]/);
+    if(m){
+      const depth=Math.round(m.index/4)+1;
+      const name=line.slice(m.index+1).replace(/^[-─]+/,'').trim();
+      if(name)flat.push({node:mkn(name,'dir'),depth});continue;
+    }
+    if(!/^[│|\ ]/.test(line))continue;
+    const ns=line.search(/[^│| ]/);if(ns<=0)continue;
+    const name=line.slice(ns).trim();if(!name)continue;
+    const depth=Math.round(ns/4);
+    if(depth>0)flat.push({node:mkn(name,'file'),depth});
+  }
+  return assemble(root,flat);
+}
+function parseInd(lines){
+  const root=mkn(lines[0].trim()||'Root');const rest=lines.slice(1);
+  const inds=rest.map(l=>{const m=l.match(/^(\s+)\S/);return m?m[1].replace(/\t/g,'    ').length:0}).filter(n=>n>0);
+  const sz=inds.length?Math.min(...inds):2;
+  return assemble(root,rest.map(l=>{
+    const d=(l.match(/^(\s*)/)?.[1]||'').replace(/\t/g,'    ').length;
+    const n=l.trim();return n?{node:mkn(n),depth:Math.round(d/sz)+1}:null;
+  }).filter(Boolean));
+}
+function assemble(root,flat){
+  const s=[{node:root,depth:0}];
+  for(const{node,depth}of flat){while(s.length>1&&s.at(-1).depth>=depth)s.pop();s.at(-1).node.children.push(node);s.push({node,depth});}
+  return root;
+}
+
+// ── Helpers ────────────────────────────────────────
+function tag(n){n.id=++_id;n.children.forEach(tag);}
+function allIds(n,s=new Set()){if(n.type==='dir')s.add(n.id);n.children.forEach(c=>allIds(c,s));return s;}
+function countAll(n){return 1+n.children.reduce((s,c)=>s+countAll(c),0);}
+function hasM(n,t){return n.name.toLowerCase().includes(t)||n.children.some(c=>hasM(c,t));}
+
+// Recursively reconstruct full filesystem paths from the root path
+// rootInputPath is what the user typed — more reliable than parsing from tree output
+let rootInputPath = '';
+
+function assignPaths(node, parentPath) {
+  // Root node: prefer typed path, then fall back to parsed path from tree output
+  if (parentPath === undefined) {
+    if (!node.path && rootInputPath) node.path = rootInputPath;
+  } else if (!node.path) {
+    node.path = parentPath ? parentPath + '\\' + node.name : null;
+  }
+  node.children.forEach(c => assignPaths(c, node.path ?? null));
+}
+
+// Open a file or folder — uses helper.py when running, falls back to clipboard
+const HELPER = 'http://localhost:7432';
+let helperOk = false;
+
+async function checkHelper() {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 600);
+    const r = await fetch(`${HELPER}/ping`, { signal: ctrl.signal });
+    clearTimeout(t);
+    helperOk = r.ok;
+  } catch (_) { helperOk = false; }
+  // Update toolbar hint based on whether helper is available
+  const hint = document.getElementById('ctrl-hint');
+  if (hint) hint.title = helperOk
+    ? 'Helper connected — opens with default app'
+    : 'Helper not running — copies path. Run helper.py to enable direct opening.';
+}
+
+async function openItem(path, type) {
+  if (helperOk) {
+    try {
+      const r = await fetch(`${HELPER}/open?path=${encodeURIComponent(path)}`);
+      if (r.ok) {
+        showToast(type === 'dir' ? '📁 Opened in Explorer' : '📄 Opened with default app');
+        return;
+      }
+      if (r.status === 404) {
+        showToast('Path not found on this machine');
+        return;
+      }
+    } catch (_) { helperOk = false; }
+  }
+  // Fallback: copy path to clipboard
+  navigator.clipboard.writeText(path).catch(() => {});
+  showToast(helperOk
+    ? '⚠ Could not open · Path copied to clipboard'
+    : '📋 Path copied · Run helper.py to open directly');
+}
+
+let _toastTimer;
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.style.opacity='1';
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>t.style.opacity='0',2800);
+}
+
+// Show/hide Ctrl hint and cursor cue in toolbar
+document.addEventListener('keydown',e=>{
+  if(e.key==='Control'){
+    document.body.classList.add('ctrl-held');
+    document.getElementById('ctrl-hint').style.display='';
+  }
+});
+document.addEventListener('keyup',e=>{
+  if(e.key==='Control'){
+    document.body.classList.remove('ctrl-held');
+    document.getElementById('ctrl-hint').style.display='none';
+  }
+});
+
+// ── Render ─────────────────────────────────────────
+function render(node,level,container){
+  const t=term.toLowerCase();
+  const matched=t&&node.name.toLowerCase().includes(t);
+  const chHit=t&&node.children.some(c=>hasM(c,t));
+  if(t&&!matched&&!chHit)return;
+  const isDir=node.type==='dir',has=node.children.length>0,isOpen=t?(matched||chHit):open.has(node.id);
+  const row=document.createElement('div');
+  row.className='nr'+(isDir&&has?' cl':'')+(matched?' hit':'')+(node.path?' has-path':'');
+  row.style.paddingLeft=(8+level*20)+'px';
+  const caret=document.createElement('div');caret.className='nc'+(isDir&&has&&isOpen?' open':'');caret.innerHTML=isDir&&has?CARET:'';
+  const ico=document.createElement('div');ico.className='ni'+(isDir?'':' fi');ico.innerHTML=isDir?(isOpen?FOPEN:FOLD):FILE;
+  const name=document.createElement('span');name.className='nn'+(isDir?'':' fn');name.textContent=node.name;
+  row.append(caret,ico,name);
+  if(isDir&&has){const b=document.createElement('span');b.className='nb';b.textContent=node.children.length;row.appendChild(b);}
+  container.appendChild(row);
+
+  // Ctrl+click: open file or folder (or explain why not possible)
+  row.addEventListener('click',e=>{
+    if(e.ctrlKey){
+      e.preventDefault();
+      if(node.path) openItem(node.path, node.type);
+      else showToast('⚠ No path available — paste a full path (C:\\...) to enable this');
+      return; // always consume Ctrl+click, never expand/collapse
+    }
+    if(!isDir||!has||t)return;
+    if(open.has(node.id)){open.delete(node.id);caret.classList.remove('open');ico.innerHTML=FOLD;kids.style.display='none';}
+    else{open.add(node.id);caret.classList.add('open');ico.innerHTML=FOPEN;kids.innerHTML='';node.children.forEach(c=>render(c,level+1,kids));kids.style.display='block';}
+  });
+
+  if(!isDir||!has)return;
+  const kids=document.createElement('div');kids.className='nk';kids.style.marginLeft=(8+level*20+18)+'px';kids.style.display=isOpen?'block':'none';
+  if(isOpen)node.children.forEach(c=>render(c,level+1,kids));
+  container.appendChild(kids);
+}
+function fullRender(){const w=document.getElementById('tree-wrap');w.innerHTML='';if(root)render(root,0,w);}
+
+function showTree(data){
+  _id=0;tag(data);
+  assignPaths(data,undefined); // reconstruct full paths from root
+  root=data;
+  open=new Set([data.id]);
+  data.children.filter(c=>c.type==='dir').forEach(c=>open.add(c.id));
+  document.getElementById('root-name').textContent=data.name;
+  const total=countAll(data)-1,folders=allIds(data).size-1,files=total-folders;
+  document.getElementById('meta').textContent=`${folders} folder${folders!==1?'s':''}, ${files} file${files!==1?'s':''}`;
+  document.getElementById('land').style.display='none';
+  document.getElementById('loading').style.display='none';
+  document.getElementById('app').style.display='flex';
+  checkHelper(); // detect if helper.py is running
+  fullRender();
+}
+
+function showErr(msg){const e=document.getElementById('err');e.textContent=msg;e.style.display='block';}
+function hideErr(){document.getElementById('err').style.display='none';}
+
+// ── Drop-and-drag ──────────────────────────────────
+let dragN=0;
+const overlay=document.getElementById('drop-overlay');
+
+document.addEventListener('dragenter',e=>{
+  if([...e.dataTransfer.types].includes('Files')){dragN++;overlay.classList.add('on');}
+});
+document.addEventListener('dragleave',()=>{
+  dragN=Math.max(0,dragN-1);if(dragN===0)overlay.classList.remove('on');
+});
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',async e=>{
+  e.preventDefault();dragN=0;overlay.classList.remove('on');
+  const items=[...e.dataTransfer.items];
+  for(const item of items){
+    if(item.kind!=='file')continue;
+    try{
+      const handle=await item.getAsFileSystemHandle?.();
+      if(handle?.kind==='directory'){
+        document.getElementById('land').style.display='none';
+        document.getElementById('loading').style.display='flex';
+        document.getElementById('load-msg').textContent='Reading folder…';
+        showTree(await readDir(handle));return;
+      }
+    }catch(err){}
+  }
+  showErr('Could not read the dropped folder — paste the path above instead.');
+});
+
+// ── Path → command ─────────────────────────────────
+const pathEl=document.getElementById('path');
+const cmdCard=document.getElementById('cmd-card');
+const cmdText=document.getElementById('cmd-text');
+
+pathEl.addEventListener('input',()=>{
+  const p=pathEl.value.trim();
+  const warn=document.getElementById('path-warn');
+  // Full path starts with drive letter (C:\) or UNC (\\server)
+  const isFull=/^[A-Za-z]:\\/.test(p)||/^\\\\/.test(p);
+  warn.style.display=(p&&!isFull)?'block':'none';
+  if(p){cmdText.textContent=`tree /f /a "${p}" | clip`;cmdCard.classList.add('on');hideErr();}
+  else cmdCard.classList.remove('on');
+});
+pathEl.focus();
+
+// Copy command
+document.getElementById('copy-btn').addEventListener('click',async()=>{
+  const btn=document.getElementById('copy-btn');
+  try{
+    await navigator.clipboard.writeText(cmdText.textContent);
+    btn.textContent='Copied ✓';btn.classList.add('ok');
+    setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('ok');},2000);
+  }catch(e){showErr('Copy failed — select the command text and copy manually.');}
+});
+
+// Paste & view — try clipboard API first, fall back to Ctrl+V capture
+const pasteBtn=document.getElementById('paste-btn');
+const pasteCapture=document.getElementById('paste-capture');
+
+function tryParse(text){
+  if(!text?.trim()){showErr('Nothing was pasted — make sure you ran the command first.');return false;}
+  const data=parse(text);
+  if(!data){showErr("Doesn't look like tree output. Make sure you ran tree /f /a and pasted the full output.");return false;}
+  // Capture the path the user typed — used as the definitive root path for Ctrl+click
+  rootInputPath = pathEl.value.trim();
+  showTree(data);return true;
+}
+
+function activatePasteCapture(){
+  pasteBtn.textContent='⌨  Now press Ctrl+V anywhere on this page';
+  pasteBtn.classList.add('waiting');
+  pasteCapture.value='';
+  pasteCapture.focus();
+}
+
+pasteCapture.addEventListener('paste',e=>{
+  const text=e.clipboardData.getData('text/plain');
+  pasteBtn.classList.remove('waiting');
+  pasteBtn.textContent='📋 \u00a0Step 3 — Paste & view tree';
+  if(!tryParse(text))return;
+  e.preventDefault();
+});
+
+pasteBtn.addEventListener('click',async()=>{
+  hideErr();
+  // 1. Try the async clipboard API (works on HTTPS / GitHub Pages)
+  try{
+    const text=await navigator.clipboard.readText();
+    tryParse(text);return;
+  }catch(_){}
+  // 2. Fallback: focus hidden textarea, wait for Ctrl+V
+  activatePasteCapture();
+});
+
+// Show manual box
+document.getElementById('fallback-link').addEventListener('click',()=>{
+  document.getElementById('manual-box').classList.add('on');
+  document.getElementById('fallback-link').style.display='none';
+});
+document.getElementById('view-btn').addEventListener('click',()=>{
+  const d=parse(document.getElementById('paste').value);
+  if(d){hideErr();rootInputPath=pathEl.value.trim();showTree(d);}
+  else showErr("Could not parse — make sure you ran tree /f /a and pasted the full output.");
+});
+
+// Back
+document.getElementById('back').addEventListener('click',()=>{
+  document.getElementById('app').style.display='none';
+  document.getElementById('land').style.display='flex';
+  pathEl.focus();
+});
+
+// Expand / collapse
+document.getElementById('exp-all').addEventListener('click',()=>{open=allIds(root);fullRender();});
+document.getElementById('col-all').addEventListener('click',()=>{open=new Set([root.id]);fullRender();});
+
+// Search
+let st;
+document.getElementById('search').addEventListener('input',e=>{
+  clearTimeout(st);st=setTimeout(()=>{
+    term=e.target.value.trim();
+    document.getElementById('clr-s').style.display=term?'inline-flex':'none';
+    fullRender();
+  },150);
+});
+document.getElementById('clr-s').addEventListener('click',()=>{
+  document.getElementById('search').value='';document.getElementById('clr-s').style.display='none';term='';fullRender();
+});
+</script>
+<div id="toast"></div>
+</body>
+</html>
