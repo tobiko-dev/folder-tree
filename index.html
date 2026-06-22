@@ -3,7 +3,7 @@
   Author: Woobin Park
   GitHub: https://github.com/tobiko-dev/folder-tree
   Created: 6/17/26
-  Version 1.0 Korean support added
+  Version 1.0.1 Korean support added
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -615,9 +615,8 @@ let pasteSink=null;
 
 function activatePasteCapture(){
   waitingForPaste=true;
-  pasteBtn.innerHTML='⌨\u00a0\u00a0Press <strong>Ctrl+V</strong> now';
+  pasteBtn.innerHTML='⌨\u00a0\u00a0Press <strong>Ctrl+V</strong> to load';
   pasteBtn.classList.add('waiting');
-  // Create a focused hidden input so Ctrl+V reliably fires a paste event
   if(!pasteSink){
     pasteSink=document.createElement('textarea');
     pasteSink.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;border:0;padding:0;margin:0';
@@ -639,7 +638,7 @@ function resetPasteBtn(){
   pasteBtn.innerHTML='📋 \u00a0Step 3 — Paste & view tree';
 }
 
-// Also catch paste at document level as a backup
+// Backup: catch paste anywhere on the page
 document.addEventListener('paste',e=>{
   if(!waitingForPaste)return;
   const text=(e.clipboardData||window.clipboardData).getData('text/plain');
@@ -649,23 +648,28 @@ document.addEventListener('paste',e=>{
   tryParse(text);
 });
 
-pasteBtn.addEventListener('click',async()=>{
+pasteBtn.addEventListener('click',()=>{
   hideErr();
-  // If already waiting and clicked again, open manual paste box
   if(waitingForPaste){
+    // Second click while waiting → open manual box
     resetPasteBtn();
     document.getElementById('manual-box').classList.add('on');
     document.getElementById('fallback-link').style.display='none';
     document.getElementById('paste').focus();
     return;
   }
-  // 1. Try the async clipboard API (works on HTTPS / GitHub Pages)
-  try{
-    const text=await navigator.clipboard.readText();
-    if(text&&text.trim()){tryParse(text);return;}
-  }catch(_){}
-  // 2. Fallback: wait for Ctrl+V
-  activatePasteCapture();
+  // Try the clipboard API directly inside the click gesture.
+  // Must NOT await before calling — that breaks the user-gesture context.
+  if(navigator.clipboard&&navigator.clipboard.readText){
+    navigator.clipboard.readText()
+      .then(text=>{
+        if(text&&text.trim()) tryParse(text);
+        else activatePasteCapture();
+      })
+      .catch(()=>activatePasteCapture());
+  }else{
+    activatePasteCapture();
+  }
 });
 
 // Show manual box
