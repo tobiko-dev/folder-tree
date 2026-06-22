@@ -3,6 +3,7 @@
   Author: Woobin Park
   GitHub: https://github.com/tobiko-dev/folder-tree
   Created: 6/17/26
+  Version 1.0 Korean support added
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -133,9 +134,6 @@ body.ctrl-held .nr.has-path:hover .nn{text-decoration:underline;text-underline-o
 </head>
 <body>
 
-<!-- Hidden paste capture (focused when clipboard API is blocked) -->
-<textarea id="paste-capture" tabindex="-1" aria-hidden="true"></textarea>
-
 <!-- Drop overlay -->
 <div id="drop-overlay">
   <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
@@ -174,7 +172,7 @@ body.ctrl-held .nr.has-path:hover .nn{text-decoration:underline;text-underline-o
   <!-- Step 2: command (shown once path entered) -->
   <div class="cmd-card" id="cmd-card">
     <div class="card-label">Step 2 — run this command</div>
-    <div class="cmd-lbl">Paste into Command Prompt and press Enter. Output copies to your clipboard automatically.</div>
+    <div class="cmd-lbl">Paste into <strong>Command Prompt</strong> and press Enter. This reads every file and folder (Korean names included) and copies the list to your clipboard automatically.</div>
     <div class="cmd-row">
       <div class="cmd-box" id="cmd-text"></div>
       <button class="copy-btn" id="copy-btn">Copy</button>
@@ -189,7 +187,7 @@ body.ctrl-held .nr.has-path:hover .nn{text-decoration:underline;text-underline-o
     <button class="view-btn" id="view-btn">View tree →</button>
   </div>
 
-  <p class="note">Nothing is uploaded — all processing happens in your browser · Built by <a href="https://github.com/tobiko-dev" style="color:var(--accent);text-decoration:none">tobiko-dev</a></p>
+  <p class="note">Nothing is uploaded — all processing happens in your browser</p>
 </div>
 
 <!-- Loading -->
@@ -253,8 +251,89 @@ function parse(raw){
     return t&&!t.startsWith('Folder PATH')&&!t.startsWith('Volume serial');
   });
   if(!lines.length)return null;
+  // If most lines are absolute paths (C:\... or \\server\...), parse as a path list.
+  // This is the Get-ChildItem format — Unicode-safe and carries full paths.
+  const pathLines=lines.filter(l=>/^[A-Za-z]:\\/.test(l.trim())||/^\\\\/.test(l.trim()));
+  if(pathLines.length>=Math.max(1,lines.length*0.6)) return parsePathList(pathLines);
+  // Otherwise fall back to tree-style parsing
   return lines.some(l=>/[├└│+\\─]/.test(l))?parseWin(lines):parseInd(lines);
 }
+
+// Build a tree from a flat list of absolute paths (from Get-ChildItem .FullName)
+function parsePathList(lines){
+  const paths=lines.map(l=>l.trim()).filter(Boolean);
+  if(!paths.length)return null;
+
+  // Find the common root: the shortest path that all others start with,
+  // or derive it from the shared leading segments.
+  const split=paths.map(p=>p.split('\\'));
+  // Common prefix segments across every path
+  let common=split[0].slice(0,-1); // start with first path's parent
+  for(const seg of split){
+    let i=0;
+    while(i<common.length&&i<seg.length-1&&common[i].toLowerCase()===seg[i].toLowerCase())i++;
+    common=common.slice(0,i);
+  }
+  if(common.length===0)common=[split[0][0]]; // at least the drive
+
+  const rootPath=common.join('\\');
+  const rootName=common[common.length-1]||rootPath;
+  const root=mkn(rootName,'dir');
+  root.path=rootPath;
+
+  // Index of path(lowercased) → node, so we can attach children to parents
+  const index=new Map();
+  index.set(rootPath.toLowerCase(),root);
+
+  // Sort so parents are created before children
+  paths.sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
+
+  for(const full of paths){
+    const rel=full.slice(rootPath.length).replace(/^\\/,'');
+    if(!rel)continue;
+    const parts=rel.split('\\');
+    let curPath=rootPath;
+    let parent=root;
+    for(let i=0;i<parts.length;i++){
+      const name=parts[i];
+      curPath=curPath+'\\'+name;
+      const key=curPath.toLowerCase();
+      let node=index.get(key);
+      if(!node){
+        // Last part with a file extension and no deeper children → file (we refine type below)
+        node=mkn(name,'dir'); // default dir; corrected in a second pass
+        node.path=curPath;
+        index.set(key,node);
+        parent.children.push(node);
+      }
+      parent=node;
+    }
+  }
+
+  // Second pass: anything with no children AND a file-like extension → file
+  function refine(node){
+    if(node.children.length===0){
+      if(/\.[A-Za-z0-9]{1,8}$/.test(node.name)) node.type='file';
+    } else {
+      node.type='dir';
+      node.children.forEach(refine);
+    }
+  }
+  root.children.forEach(refine);
+
+  // Sort each level: folders first, then alphabetical
+  function sortTree(node){
+    node.children.sort((a,b)=>{
+      if(a.type!==b.type)return a.type==='dir'?-1:1;
+      return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});
+    });
+    node.children.forEach(sortTree);
+  }
+  sortTree(root);
+
+  return root;
+}
+
 let _id=0;
 const mkn=(n,t='dir')=>({id:++_id,name:n,type:t,children:[]});
 function parseWin(lines){
@@ -446,6 +525,7 @@ document.addEventListener('dragover',e=>e.preventDefault());
 document.addEventListener('drop',async e=>{
   e.preventDefault();dragN=0;overlay.classList.remove('on');
   const items=[...e.dataTransfer.items];
+  // Try a dropped folder (direct File System Access — bypasses the command entirely)
   for(const item of items){
     if(item.kind!=='file')continue;
     try{
@@ -472,57 +552,119 @@ pathEl.addEventListener('input',()=>{
   // Full path starts with drive letter (C:\) or UNC (\\server)
   const isFull=/^[A-Za-z]:\\/.test(p)||/^\\\\/.test(p);
   warn.style.display=(p&&!isFull)?'block':'none';
-  if(p){cmdText.textContent=`tree /f /a "${p}" | clip`;cmdCard.classList.add('on');hideErr();}
+  if(p){const esc=p.replace(/'/g,"''");cmdText.textContent=`powershell -c "Get-ChildItem -LiteralPath '${esc}' -Recurse | ForEach-Object { $_.FullName } | Set-Clipboard"`;cmdCard.classList.add('on');hideErr();}
   else cmdCard.classList.remove('on');
 });
 pathEl.focus();
 
+// Robust copy — tries modern API first, falls back to execCommand for file:// pages
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (_) {}
+  // Fallback: temporary textarea + execCommand (works on file:// without permissions)
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (_) {
+    document.body.removeChild(ta);
+    return false;
+  }
+}
+
 // Copy command
 document.getElementById('copy-btn').addEventListener('click',async()=>{
   const btn=document.getElementById('copy-btn');
-  try{
-    await navigator.clipboard.writeText(cmdText.textContent);
+  const ok = await copyToClipboard(cmdText.textContent);
+  if(ok){
     btn.textContent='Copied ✓';btn.classList.add('ok');
     setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('ok');},2000);
-  }catch(e){showErr('Copy failed — select the command text and copy manually.');}
+  } else {
+    // Last resort — select the text so user can Ctrl+C
+    const range=document.createRange();
+    range.selectNodeContents(cmdText);
+    const sel=window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    showErr('Could not copy automatically — the text is now selected, press Ctrl+C');
+  }
 });
 
 // Paste & view — try clipboard API first, fall back to Ctrl+V capture
 const pasteBtn=document.getElementById('paste-btn');
-const pasteCapture=document.getElementById('paste-capture');
 
 function tryParse(text){
   if(!text?.trim()){showErr('Nothing was pasted — make sure you ran the command first.');return false;}
   const data=parse(text);
-  if(!data){showErr("Doesn't look like tree output. Make sure you ran tree /f /a and pasted the full output.");return false;}
+  if(!data){showErr("That doesn't look like tree output. Make sure you ran the full command.");return false;}
   // Capture the path the user typed — used as the definitive root path for Ctrl+click
   rootInputPath = pathEl.value.trim();
   showTree(data);return true;
 }
 
+let waitingForPaste=false;
+let pasteSink=null;
+
 function activatePasteCapture(){
-  pasteBtn.textContent='⌨  Now press Ctrl+V anywhere on this page';
+  waitingForPaste=true;
+  pasteBtn.innerHTML='⌨\u00a0\u00a0Press <strong>Ctrl+V</strong> now';
   pasteBtn.classList.add('waiting');
-  pasteCapture.value='';
-  pasteCapture.focus();
+  // Create a focused hidden input so Ctrl+V reliably fires a paste event
+  if(!pasteSink){
+    pasteSink=document.createElement('textarea');
+    pasteSink.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;border:0;padding:0;margin:0';
+    pasteSink.setAttribute('aria-hidden','true');
+    document.body.appendChild(pasteSink);
+    pasteSink.addEventListener('paste',e=>{
+      const text=(e.clipboardData||window.clipboardData).getData('text/plain');
+      e.preventDefault();
+      resetPasteBtn();
+      tryParse(text);
+    });
+  }
+  pasteSink.value='';
+  pasteSink.focus();
+}
+function resetPasteBtn(){
+  waitingForPaste=false;
+  pasteBtn.classList.remove('waiting');
+  pasteBtn.innerHTML='📋 \u00a0Step 3 — Paste & view tree';
 }
 
-pasteCapture.addEventListener('paste',e=>{
-  const text=e.clipboardData.getData('text/plain');
-  pasteBtn.classList.remove('waiting');
-  pasteBtn.textContent='📋 \u00a0Step 3 — Paste & view tree';
-  if(!tryParse(text))return;
+// Also catch paste at document level as a backup
+document.addEventListener('paste',e=>{
+  if(!waitingForPaste)return;
+  const text=(e.clipboardData||window.clipboardData).getData('text/plain');
+  if(!text)return;
   e.preventDefault();
+  resetPasteBtn();
+  tryParse(text);
 });
 
 pasteBtn.addEventListener('click',async()=>{
   hideErr();
+  // If already waiting and clicked again, open manual paste box
+  if(waitingForPaste){
+    resetPasteBtn();
+    document.getElementById('manual-box').classList.add('on');
+    document.getElementById('fallback-link').style.display='none';
+    document.getElementById('paste').focus();
+    return;
+  }
   // 1. Try the async clipboard API (works on HTTPS / GitHub Pages)
   try{
     const text=await navigator.clipboard.readText();
-    tryParse(text);return;
+    if(text&&text.trim()){tryParse(text);return;}
   }catch(_){}
-  // 2. Fallback: focus hidden textarea, wait for Ctrl+V
+  // 2. Fallback: wait for Ctrl+V
   activatePasteCapture();
 });
 
