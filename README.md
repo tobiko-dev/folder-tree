@@ -1,6 +1,6 @@
 # 📁 Folder Tree
 
-Navigate any folder — files and all — as a fast, searchable tree. Built for people who find jumping between OneDrive folders disorienting.
+Navigate any folder — files and all — as a fast, searchable tree. Built for people who find jumping between folders disorienting.
 
 **[Open the app →](https://tobiko-dev.github.io/folder-tree)**
 
@@ -16,7 +16,7 @@ Paste a folder path, run one command, and your entire directory structure become
 
 ### 1. Open the app
 
-Go to **[tobiko-dev.github.io/folder-tree](https://tobiko-dev.github.io/folder-tree)** in **Chrome or Edge.**
+Go to **[tobiko-dev.github.io/folder-tree](https://tobiko-dev.github.io/folder-tree)** in any browser.
 
 ---
 
@@ -42,12 +42,14 @@ Press **Ctrl+A** to select it, then **Ctrl+C** to copy. Paste it into the app.
 The app generates a command for you the moment you paste your path:
 
 ```
-tree /f /a "C:\Users\YourName\OneDrive - Company Name" | clip
+powershell -c "Get-ChildItem -LiteralPath 'C:\Users\YourName\OneDrive - Company Name' -Recurse | ForEach-Object { $_.FullName } | Set-Clipboard"
 ```
 
 - Open **Command Prompt** (search `cmd` in the Start menu)
 - Paste the command and press **Enter**
-- The output copies to your clipboard automatically — the `| clip` part handles this, no manual selecting needed
+- The output copies to your clipboard automatically — `Set-Clipboard` handles this, no manual selecting needed
+
+> **Why PowerShell instead of `tree`?** The classic `tree` command corrupts non-English characters like Korean (they show up as `????`). `Get-ChildItem` reads the filesystem natively, so Korean, Japanese, and other Unicode folder and file names come through perfectly intact. You still paste this single line into Command Prompt — no separate PowerShell window needed.
 
 ---
 
@@ -78,7 +80,7 @@ Once your tree is loaded:
 
 By default, Ctrl+clicking a file or folder copies its full path to your clipboard. To actually *open* things — folders in Explorer, files in their default app (Excel, Notepad, VS Code, etc.) — you need the helper script.
 
-### Setup (one time)
+### Optional Setup (one time)
 
 1. Download **`helper.py`** and **`start_helper.bat`** from this repository and put them in the same folder as `index.html`
 2. Double-click **`start_helper.bat`** — a Command Prompt window opens and shows:
@@ -123,13 +125,7 @@ Just press **Ctrl+V** — the tree loads immediately. No extra steps needed.
 
 ### Files aren't showing, only folders
 
-The command uses `/f` to include files. If you're not seeing files, make sure you're running the exact command the app generates:
-
-```
-tree /f /a "C:\your\path" | clip
-```
-
-Not just `tree /a` (which shows folders only).
+Make sure you copied and ran the **entire** command the app generates — it should start with `powershell -c` and end with `Set-Clipboard`. If part of it got cut off, only some items will be captured. Use the **Copy** button in the app to grab the whole line cleanly.
 
 ---
 
@@ -177,8 +173,8 @@ Firefox and Safari don't support the File System Access API or the clipboard fea
 
 The app is a single `index.html` file with no framework, no build step, and no external dependencies.
 
-When you run `tree /f /a "path" | clip`, Windows walks your directory and writes a text-based tree to your clipboard. The `/f` flag includes files, `/a` uses plain characters that are easy to parse, and `| clip` pipes the output straight to your clipboard so you don't have to copy it manually.
+When you run the command, PowerShell's `Get-ChildItem -Recurse` walks your directory and outputs the full path of every file and folder, one per line, then `Set-Clipboard` copies that list to your clipboard. `Get-ChildItem` reads the filesystem through native Unicode APIs, which is why Korean and other non-English names stay intact — unlike the older `tree` command, which corrupts them.
 
-The app parses that text into a data structure, reconstructs the full path for every file and folder using the path you typed, and renders the interactive tree entirely in your browser. Nothing is sent anywhere.
+The app parses that list of paths into a tree structure and renders it entirely in your browser. Because every line is already a full path, each file and folder knows exactly where it lives — which is what makes Ctrl+click able to open the right thing. Nothing is sent anywhere.
 
 The `helper.py` script runs a small local server on `localhost:7432`. When you Ctrl+click, the browser calls it, and it uses Python's `os.startfile()` and `subprocess` to open things natively — the same mechanism as double-clicking in Explorer.
